@@ -1,64 +1,70 @@
 /**
  * Created by 徐旭 on 2018/6/25
  */
-// express框架
-let express = require('express');
-let router = express.Router();
-
-// 数据库配置
-let mysql = require('mysql');
-let dbConfig = require('../../db/DBConfig');
-let ftpSql = require('../../db/ftpSql');
-let pool = mysql.createPool(dbConfig.mysql);
 let
-	// express = require("express"),
+	// express框架
+	express = require('express'),
+	router = express.Router(),
+	url = require('url');
+	// 数据库配置
+	mysql = require('mysql'),
+	dbConfig = require('../../db/DBConfig'),
+	ftpSql = require('../../db/ftpSql'),
+	pool = mysql.createPool(dbConfig.mysql),
 	fs = require("fs"),
 	rimraf = require("rimraf"),
 	mkdirp = require("mkdirp"),
+	Client = require('ftp'),
 	multiparty = require('multiparty'),
-	// app = express(),
 
-	// paths/constants
 	fileInputName = process.env.FILE_INPUT_NAME || "qqfile",
-	// publicDir = process.env.PUBLIC_DIR,
-	// nodeModulesDir = process.env.NODE_MODULES_DIR,
-	// uploadedFilesPath = process.env.UPLOADED_FILES_DIR,
 	chunkDirName = "chunks",
-	// port = process.env.SERVER_PORT || 3001,
-	maxFileSize = process.env.MAX_FILE_SIZE || 0; // in bytes, 0 for unlimited
+	maxFileSize = process.env.MAX_FILE_SIZE || 0,
+	publicDir = "/home/yiliao/public/",
+	uploadedFilesPath = "/home/yiliao/upload/",
+	nodeModulesDir = "/home/yiliao/public/nodeModule/",
+	downloadFilesPath = "/home/yiliao/ftp/",
+	uploadUri = "http://223.2.197.241:80/";
 
-let Client = require('ftp');
+// 上传文件接口
+router.post("/uploads", onUpload);
+// 下载文件接口,根据id下载文件
+router.get("/download", downLoad);
 
-let publicDir = "/home/yiliao/public/";
-let uploadedFilesPath = "/home/yiliao/upload/";
-let nodeModulesDir = "/home/yiliao/public/nodeModule/";
-let uploadUri = "http://223.2.197.241:80/";
+function downLoad(req, res) {
+	let getUriObj = url.parse(req.url, true);
+	querySql((data) => {
+		res.download(downloadFilesPath + data.uuid + "_" + data.fileName, data.fileName, (err) => {
+			if (err) {
+				console.log("err", err);
+			} else {
+				console.log("ok");
+			}
+		});
+	}, getUriObj)
+}
 
-// app.listen(port);
-
-// routes
-// app.all('*', function (req, res, next) {
-// 	res.header("Access-Control-Allow-Origin", "*");
-// 	res.header("Access-Control-Allow-Headers", "X-Requested-With, Cache-Control, x-user-token");
-// 	res.header("Access-Control-Allow-Methods", "PUT,POST,GET,DELETE,OPTIONS");
-// 	res.header("X-Powered-By", ' 3.2.1')
-// 	res.header("Content-Type", "application/json;charset=utf-8");
-// 	next();
-// });
-// app.use(express.static(publicDir));
-// app.use("/node_modules", express.static(nodeModulesDir));
-// app.post("/uploads", onUpload);
-// app.delete("/uploads/:uuid", onDeleteFile);
-
-router.post("/uploads", onUpload)
-
+function querySql(success, getUriObj) {
+	pool.getConnection((err, connection) => {
+		connection.query(ftpSql.getFtpById, getUriObj.query.id, (err, result) => {
+			if(result[0].file_path != '') {
+				let data = {
+					fileName: result[0].file_path,
+					uuid: result[0].uuid
+				}
+				success(data);
+			}
+			connection.release();
+		})
+	});
+}
 
 function onUpload(req, res) {
 	let form = new multiparty.Form();
 	console.log("测试nodeJs上传文件");
 
 	form.parse(req, function (err, fields, files) {
-		var partIndex = fields.qqpartindex;
+		let partIndex = fields.qqpartindex;
 
 		// text/plain is required to ensure support for IE9 and older
 		res.set("Content-Type", "text/plain");
@@ -73,7 +79,7 @@ function onUpload(req, res) {
 }
 
 function onSimpleUpload(fields, file, res) {
-	var uuid = fields.qquuid,
+	let uuid = fields.qquuid,
 		responseData = {
 			success: false
 		};
@@ -87,7 +93,7 @@ function onSimpleUpload(fields, file, res) {
 						success: true,
 						result: {
 							name: file.name[0],
-							uri: uploadUri + file.name[0]
+							uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
 						},
 						reset: null,
 						error: null
@@ -117,24 +123,22 @@ function uploadFileAndFtpServer(success, file, uuid) {
 	};
 	client.connect(options);
 	client.on('ready', () => {
-		client.put(uploadedFilesPath + uuid + "/" + file.name[0], file.name[0], (err) => {
-			console.log("file.name[0]=", file.name[0]);
+		client.put(uploadedFilesPath + uuid + "/" + file.name[0], uuid[0].replace('_', '+') + '_' + file.name[0], (err) => {
 			if (err) {
 				throw err;
 			}
 			console.log('上传文件成功!');
 			client.end();
-			uploadEnd(uploadUri + file.name[0], success);
+			uploadEnd(uuid, file.name[0], success);
 		});
 	});
 }
 
-function uploadEnd(filePath, success) {
+function uploadEnd(uuid, filePath, success) {
 	pool.getConnection((err, connection) => {
-		console.log("存入数据库");
+		console.log("数据库操作");
 		//	获取前端传递的数据
-		connection.query(ftpSql.insert, [filePath, new Date().toLocaleString()], (err, result) => {
-			console.log("date=", (new Date()).toLocaleString())
+		connection.query(ftpSql.insert, [filePath, new Date().toLocaleString(), uuid[0]], (err, result) => {
 			if (result) {
 				console.log("存入数据库成功");
 				success();
@@ -145,7 +149,7 @@ function uploadEnd(filePath, success) {
 }
 
 function onChunkedUpload(fields, file, res) {
-	var size = parseInt(fields.qqtotalfilesize),
+	let size = parseInt(fields.qqtotalfilesize),
 		uuid = fields.qquuid,
 		index = fields.qqpartindex,
 		totalParts = parseInt(fields.qqtotalparts),
@@ -159,28 +163,25 @@ function onChunkedUpload(fields, file, res) {
 	if (isValid(size)) {
 		storeChunk(file, uuid, index, totalParts, function () {
 				if (index < totalParts - 1) {
-					console.log("index=", index);
-					console.log("totalParts=", totalParts);
-						responseData = {
-							success: true,
-							result: {
-								name: file.name[0],
-								uri: uploadUri + file.name[0]
-							},
-							reset: null,
-							error: null
-						};
-						res.send(responseData);
+					responseData = {
+						success: true,
+						result: {
+							name: file.name[0],
+							uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
+						},
+						reset: null,
+						error: null
+					};
+					res.send(responseData);
 				}
 				else {
 					combineChunks(file, uuid, function () {
-						console.log("combineCunks uuid=", uuid);
 							uploadFileAndFtpServer(function () {
 								responseData = {
 									success: true,
 									result: {
 										name: file.name[0],
-										uri: uploadUri + file.name[0]
+										uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
 									},
 									reset: null,
 									error: null
@@ -212,7 +213,7 @@ function failWithTooBigFile(responseData, res) {
 }
 
 function onDeleteFile(req, res) {
-	var uuid = req.params.uuid,
+	let uuid = req.params.uuid,
 		dirToDelete = uploadedFilesPath + uuid;
 
 	rimraf(dirToDelete, function (error) {
@@ -231,7 +232,7 @@ function isValid(size) {
 
 function moveFile(destinationDir, sourceFile, destinationFile, success, failure) {
 	mkdirp(destinationDir, function (error) {
-		var sourceStream, destStream;
+		let sourceStream, destStream;
 
 		if (error) {
 			console.error("Problem creating directory " + destinationDir + ": " + error);
@@ -257,7 +258,7 @@ function moveFile(destinationDir, sourceFile, destinationFile, success, failure)
 }
 
 function moveUploadedFile(file, uuid, success, failure) {
-	var destinationDir = uploadedFilesPath + uuid + "/",
+	let destinationDir = uploadedFilesPath + uuid + "/",
 		fileDestination = destinationDir + file.name;
 	console.log("destinationDir=" + destinationDir);
 
@@ -265,7 +266,7 @@ function moveUploadedFile(file, uuid, success, failure) {
 }
 
 function storeChunk(file, uuid, index, numChunks, success, failure) {
-	var destinationDir = uploadedFilesPath + uuid + "/" + chunkDirName + "/",
+	let destinationDir = uploadedFilesPath + uuid + "/" + chunkDirName + "/",
 		chunkFilename = getChunkFilename(index, numChunks),
 		fileDestination = destinationDir + chunkFilename;
 
@@ -273,14 +274,14 @@ function storeChunk(file, uuid, index, numChunks, success, failure) {
 }
 
 function combineChunks(file, uuid, success, failure) {
-	var chunksDir = uploadedFilesPath + uuid + "/" + chunkDirName + "/",
+	let chunksDir = uploadedFilesPath + uuid + "/" + chunkDirName + "/",
 		destinationDir = uploadedFilesPath + uuid + "/",
 		fileDestination = destinationDir + file.name;
 
 	console.log("chunkDir=", chunksDir);
 
 	fs.readdir(chunksDir, function (err, fileNames) {
-		var destFileStream;
+		let destFileStream;
 
 		if (err) {
 			console.error("Problem listing chunks! " + err);
@@ -323,7 +324,7 @@ function appendToStream(destStream, srcDir, srcFilesnames, index, success, failu
 }
 
 function getChunkFilename(index, count) {
-	var digits = new String(count).length,
+	let digits = new String(count).length,
 		zeros = new Array(digits + 1).join("0");
 
 	return (zeros + index).slice(-digits);
@@ -332,7 +333,7 @@ function getChunkFilename(index, count) {
 
 // 递归删除文件夹及文件
 function deleteAll(path) {
-	console.log("path=", path);
+	console.log("删除临时文件及文件夹");
 	let files = [];
 	if (fs.existsSync(path)) {
 		files = fs.readdirSync(path);

@@ -3,7 +3,7 @@
  */
 module.exports = ftpSql = {
 	// insert: 'INSERT INTO ftp_file(id, file_path) VALUES(0,?)',
-	insert: 'INSERT INTO ftp_file(id, file_path, date) VALUES(0, ?, ?)',
+	insert: 'INSERT INTO ftp_file(id, file_path, date, uuid) VALUES(0, ?, ?, ?)',
 	queryAll: 'SELECT * FROM ftp_file',
 	getFtpById: 'SELECT * FROM ftp_file WHERE id = ?'
 };
