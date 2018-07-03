@@ -26,6 +26,7 @@ let
 	downloadFilesPath = "/home/yiliao/ftp/",
 	uploadUri = "http://223.2.197.241:80/";
 
+
 // 上传文件接口
 router.post("/uploads", onUpload);
 // 下载文件接口,根据id下载文件
@@ -117,6 +118,7 @@ function uploadFileAndFtpServer(success, file, uuid) {
 	let client = new Client();
 	let options = {
 		host: '223.2.197.241',
+		// host: '127.0.0.1',
 		port: 2121,
 		user: 'admin',
 		password: 'admin'
