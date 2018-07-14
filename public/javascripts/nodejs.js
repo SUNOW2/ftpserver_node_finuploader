@@ -24,6 +24,7 @@ let
 	uploadedFilesPath = "/home/yiliao/upload/",
 	nodeModulesDir = "/home/yiliao/public/nodeModule/",
 	downloadFilesPath = "/home/yiliao/ftp/",
+	ftpserverFilesPath = "/home/ftp/",
 	uploadUri = "http://223.2.197.241:80/";
 
 
@@ -94,7 +95,8 @@ function onSimpleUpload(fields, file, res) {
 						success: true,
 						result: {
 							name: file.name[0],
-							uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
+							// uri: uploadUri + uuid[0] + '/' + file.name[0]
+							uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0] + "?attname=" + file.name[0]
 						},
 						reset: null,
 						error: null
@@ -126,6 +128,12 @@ function uploadFileAndFtpServer(success, file, uuid) {
 	client.connect(options);
 	client.on('ready', () => {
 		client.put(uploadedFilesPath + uuid + "/" + file.name[0], uuid[0].replace('_', '+') + '_' + file.name[0], (err) => {
+			// fs.mkdir(ftpserverFilesPath + uuid[0], () => {
+			// 	let readStream = fs.createReadStream(ftpserverFilesPath + uuid[0].replace('_', '+') + '_' + file.name[0]);
+			// 	let writeStream = fs.createWriteStream(ftpserverFilesPath + uuid[0] + '/' + file.name[0]);
+			// 	readStream.pipe(writeStream);
+			// 	fs.unlink(ftpserverFilesPath + uuid[0].replace('_', '+') + '_' + file.name[0]);
+			// });
 			if (err) {
 				throw err;
 			}
@@ -169,7 +177,7 @@ function onChunkedUpload(fields, file, res) {
 						success: true,
 						result: {
 							name: file.name[0],
-							uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
+							uri: ''
 						},
 						reset: null,
 						error: null
@@ -183,7 +191,7 @@ function onChunkedUpload(fields, file, res) {
 									success: true,
 									result: {
 										name: file.name[0],
-										uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0]
+										uri: uploadUri + uuid[0].replace('_', '+') + '_' + file.name[0] + "?attname=" + file.name[0]
 									},
 									reset: null,
 									error: null
